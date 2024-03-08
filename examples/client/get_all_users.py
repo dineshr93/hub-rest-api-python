@@ -51,8 +51,8 @@ bd = Client(
 
 for i,user in enumerate(bd.get_resource("users"),1):
     ll_obj=bd.get_resource("last-login",user,items=False,headers={'Accept': 'application/vnd.blackducksoftware.user-4+json'})
-    logging.info(user['userName'])
-    logging.info(ll_obj)
+    #logging.info(user['userName'])
+    #logging.info(ll_obj)
     if ll_obj.get('lastLogin'):
         print(f"{i} {user['userName']}, First Name: {user['firstName']}, Last Name: {user['lastName']}, Active: {user['active']}, Email: {user['email']}, last login: {ll_obj['lastLogin']}")
     else:
