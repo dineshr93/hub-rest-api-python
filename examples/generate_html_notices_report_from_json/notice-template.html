@@ -55,8 +55,16 @@
     <div id="copyright-container">
         {% for row in componentCopyrightTexts %}
             <h2>
-                {{ row.componentVersionSummary.projectName }} <span>&mdash;</span> {{ row.originFullName }}
+            {% if row.homepage.component_home_page %} 
+            <a href="{{row.homepage.component_home_page}}">{{ row.componentVersionSummary.projectName }}</a> <span>&mdash;</span> {{ row.originFullName }}
+            {% else %} 
+            {{ row.componentVersionSummary.projectName }} <span>&mdash;</span> {{ row.originFullName }}
+            {% endif %}
+                 
             </h2>
+            {% if row.homepage.component_home_page %} 
+            <a href="{{row.homepage.component_home_page}}">{{row.homepage.component_home_page}}</a>
+            {% endif %}
             {% for cr in row.copyrightTexts %}
                 <ul>
                     <li style="list-style-type:disc;">
