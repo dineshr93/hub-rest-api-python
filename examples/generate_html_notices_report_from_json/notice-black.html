@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang='en'>
+    <head>
+        <meta charset='UTF-8'>
+        <!-- the htmlviewer is offset to the right, this makes it so we can scroll to the right and see the complete license text -->
+        <meta name='viewport' content='width=2600, initial-scale=1.0'>
+        <meta http-equiv='X-UA-Compatible' content='ie=edge'>
+
+        <title>Software License Information</title>
+        <style>
+            body {
+                background-color: #000000;
+                color: #ffffff;
+                font-family: sans-serif;
+                margin: 0;
+                padding: 0;
+            }
+            a, a:link, a:hover, a:active, a:visited {
+                color: #ffffff;
+            }
+            .headline {
+                font-family: "Audi Type Display High";
+                font-size: 40px;
+                margin-top: 20px;
+                margin-bottom: 20px;
+                margin-left: 20px;
+                text-overflow: ellipsis;
+                overflow: hidden;
+                white-space: normal;
+                cursor: pointer;
+            }
+
+            .headline .version {
+                font-size: 30px;
+                margin-left: 20px;
+                vertical-align: middle;
+            }
+            .listelement {
+                display: flex;
+                width: 100%;
+                flex-direction: column;
+                border-bottom: 1px solid #404040;
+            }
+            .row {
+                display: inline-flex;
+                flex-direction: row;
+                width: 100%;
+            }
+            .license {
+                padding-left: 91px;
+                margin-bottom: 15px;
+                font-family: "Audi Type Display High";
+                font-size: 30px;
+                color: white;
+                width: 100%;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="list">
+            {% for row in componentLicenses %}
+                <details class="listelement">
+                    <summary class="headline" title="{{software_id}}">
+                        {{ row.component.projectName }}
+                        <span class="version">
+                        (version {% if row.component.versionName %}{{row.component.versionName}}){% endif %}
+                        </span>
+                    </summary>
+                    <div class="row">
+                        <div class="license">
+                            {# Insert link Comment #}
+                            {% if row.homepage['component_home_page'] %}
+                            <p>{{row.homepage['component_home_page']}}</p>
+                            {% endif %}
+
+                            {# SPDX LICENSE Comment #}
+                            {% if row.licenses|length > 0 %}
+                            <p>Licensed under SPDX identifier: "{{row.licenses[0]['name']}}"</p>
+                            {% endif %}
+
+                            {# COPYRIGHT Comment #}
+                            {% if componentCopyrightTexts|length > 0 %}
+                            {% for ctr in componentCopyrightTexts %}
+                                {% if row.component.projectName == ctr.componentVersionSummary.projectName %}
+                                 {% if row.component.versionName == ctr.componentVersionSummary.versionName %}
+                                 <span>&mdash;</span> {{ ctr.originFullName }}
+                                 <p>{% for c in ctr.copyrightTexts %}
+                                {{c|e}}{% if not loop.last %},{% endif %}
+                                {% endfor %}</p>
+                                {% endif %}
+                                {% endif %}
+                            {% endfor %}
+                            {% endif %}
+
+                            {# LICENSE TEXT Comment #}
+                            {% for lt_row in licenseTexts %}
+                                {% for comp in lt_row.components %}
+                                 {% if row.component.projectName == comp.projectName %}
+                                  {% if row.component.versionName == comp.versionName %}
+                                    <pre>{{lt_row.text}}</pre>
+                                  {% endif %}
+                                 {% endif %}
+                                {% endfor %}
+                            {% endfor %}
+                        </div>
+                    </div>
+                </details>
+            {% endfor %}
+        </div>
+    </body>
+</html>
