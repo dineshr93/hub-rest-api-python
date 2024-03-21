@@ -63,7 +63,9 @@ def addHomepageURL(jsonInput):
                     if componentCopyrightText["componentVersionSummary"]["projectName"] == bom_component['componentName'] and componentCopyrightText["componentVersionSummary"]["versionName"] == bom_component['componentVersionName']:
                         componentLicense["copyrightTexts"]=componentCopyrightText["copyrightTexts"]
                         componentLicense["originFullName"]=componentCopyrightText["originFullName"]
+                        componentCopyrightText["homepage"]={"component_home_page": component_details.get("url"),"additional_home_pages": component_details.get("additionalHomepages"),}
     fileContent['componentLicenses']=componentLicenses
+    fileContent['componentCopyrightTexts']=componentCopyrightTexts
     jsonInput['reportContent'][0]['fileContent']=fileContent
     return jsonInput
     
