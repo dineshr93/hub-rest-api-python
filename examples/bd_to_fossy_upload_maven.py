@@ -46,6 +46,12 @@ parser.add_argument(
     help="Include any licenses found via string search (i.e. --detect.blackduck.signature.scanner.license.search==true",
 )
 parser.add_argument(
+    "-x",
+    "--upload_copyright_bd",
+    action="store_true",
+    help="upload the copyright to blackduck",
+)
+parser.add_argument(
     "-a",
     "--all",
     action="store_true",
@@ -240,6 +246,8 @@ if args.string_search:
 
     all_origin_info.update({"license_search_results": license_search_results})
 
+# print(all_origin_info)
+
 # print()
 # Save in JSON format to file all_origin_info.json
 # filename = "all_origin_info.json"
@@ -247,6 +255,73 @@ if args.string_search:
 #     json.dump(all_origin_info, f, indent=3)
 # logging.info("Successfully saved json to file {} for {}".format(
 #     filename, args.project_name+' '+args.version))
+session = requests.Session()
+session.verify = False
+
+
+def authenticate() -> str:
+    with open(".restconfig.json", "r") as json_file:
+        json_file = json.load(json_file)
+        # print(json_file)
+        api_token = json_file.get("api_token", "")
+        baseurl = json_file.get("baseurl", "")
+        # print(copyright_link)
+        # print(copyright_text)
+
+        # payload = f'{{"copyright" : "{copyright_text}"}}'
+        headers = {
+            "Accept": "application/vnd.blackducksoftware.user-4+json",
+            "Authorization": f"token {api_token}",
+        }
+        response = session.post(
+            url=f"{baseurl}/api/tokens/authenticate",
+            headers=headers,
+        )
+        match response.status_code:
+            case 200:
+
+                json_output = json.dumps(response.json())
+                json_outputs = json.loads(json_output)
+                bearertoken = json_outputs.get("bearerToken", "")
+                # print(bearertoken)
+
+                # print(f'updated copyright: {bearertoken}')
+                return bearertoken
+
+            case _:
+                print(response.text)
+                return ""
+
+
+bearer = authenticate()
+
+
+def udpate_copyright_for_copyrightlink(copyright_link: str, copyright_text: str):
+    """get upload summary for given upload_id
+    {
+
+    }
+    """
+
+    payload = f'{{"copyright" : "{copyright_text}"}}'
+    headers = {
+        "Accept": "application/vnd.blackducksoftware.copyright-4+json",
+        "Content-Type": "application/vnd.blackducksoftware.copyright-4+json",
+        "Authorization": f"bearer {bearer}",
+    }
+    response = session.post(
+        url=copyright_link,
+        data=payload,
+        headers=headers,
+    )
+    match response.status_code:
+        case 200:
+            json_output = json.dumps(response.json())
+            json_outputs = json.loads(json_output)
+            print(f'updated copyright: {json_outputs.get("updatedCopyright","")}')
+        case _:
+            print(response.text)
+
 
 url404 = []
 badurl = []
@@ -280,6 +355,12 @@ for key, value in all_origin_info.items():
             full_file_name = libName + "-" + libVersion + "-sources.jar"
             fullURL = originUrl + full_file_name
             print(fullURL)
+            copyrightupdatelink = ""
+            meta = origin_detail.get("_meta", "")
+            links = meta.get("links", "")
+            for link in links:
+                if link.get("rel") == "component-origin-copyrights":
+                    copyrightupdatelink = link.get("href")
 
             try:
                 # headers=requests.head(fullURL).headers
@@ -304,16 +385,40 @@ for key, value in all_origin_info.items():
 
                 if "http:" in fullURL:
                     fullURL = fullURL.replace("http:", "https:")
+                folder_id = 121
                 # upload to 121 SHM_AOSP folder in fossology production
                 print(f"Triggering upload of {key}")
                 use_fossy_to.trigger_analysis_for_url_upload_package(
                     file_download_url=fullURL,
-                    file_name=full_file_name,
+                    file_name=key,
+                    # file_name=full_file_name,
                     branch_name="",
-                    folder_id=121,
+                    folder_id=folder_id,
                 )
                 time.sleep(2)
-                print("======")
+                uploads = use_fossy_to.get_all_uploads_based_on(
+                    folder_id=folder_id,
+                    is_recursive=True,
+                    limit=1000,
+                    page=1,
+                    search_pattern_key=full_file_name,
+                    upload_status="",
+                    assignee="-unassigned-",
+                    since_yyyy_mm_dd="",
+                )
+
+                for count, upload in enumerate(uploads, start=1):
+                    print(f"{count}. {upload.uploadname} upload_id:{upload.id} ")
+                    copyrights = use_fossy_to.get_copyrights_by_upload_id(upload.id)
+                    copyrights = [copyright.content for copyright in copyrights]
+                    copyrightsString = ", ".join(copyrights)
+                    print(copyrightsString)
+                    if args.upload_copyright_bd:
+                        udpate_copyright_for_copyrightlink(
+                            copyrightupdatelink, copyrightsString
+                        )
+                    print("======")
+                    print()
 
             except requests.exceptions.RequestException as e:
                 print(e)
