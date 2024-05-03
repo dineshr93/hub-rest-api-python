@@ -1,5 +1,9 @@
 #!/usr/bin/env python
 
+# Copyright @ 2024 Dinesh Ravi
+# GPL-3.0+
+
+
 import argparse
 import json
 import logging
@@ -15,6 +19,7 @@ parser = argparse.ArgumentParser(
 )
 parser.add_argument("project_name")
 parser.add_argument("version")
+parser.add_argument("folder_id")
 parser.add_argument(
     "-l",
     "--deep_license_info",
@@ -52,6 +57,12 @@ parser.add_argument(
     help="upload the copyright to blackduck",
 )
 parser.add_argument(
+    "-y",
+    "--upload_to_fossy",
+    action="store_true",
+    help="upload the package to fossy",
+)
+parser.add_argument(
     "-a",
     "--all",
     action="store_true",
@@ -60,6 +71,7 @@ parser.add_argument(
 
 
 args = parser.parse_args()
+assignee = "-unassigned-"
 
 if args.all:
     args.deep_license_info = args.copyright_info = args.matched_files = (
@@ -329,6 +341,7 @@ goodurl = []
 ignored = []
 notmaven = []
 use_fossy_to = fossy("config.ini", "prod")
+validlibscount = 0
 for key, value in all_origin_info.items():
     print(f"Component: {key}")
     if key.lower().startswith(
@@ -341,6 +354,7 @@ for key, value in all_origin_info.items():
         ignored.append(key)
         continue
     all_origin_details = value.get("all_origin_details", "")
+
     for origin_detail in all_origin_details:
         originName = origin_detail.get("originName", "")
         if originName != "maven":
@@ -385,30 +399,45 @@ for key, value in all_origin_info.items():
 
                 if "http:" in fullURL:
                     fullURL = fullURL.replace("http:", "https:")
-                folder_id = 121
+
                 # upload to 121 SHM_AOSP folder in fossology production
-                print(f"Triggering upload of {key}")
-                use_fossy_to.trigger_analysis_for_url_upload_package(
-                    file_download_url=fullURL,
-                    file_name=key,
-                    # file_name=full_file_name,
-                    branch_name="",
-                    folder_id=folder_id,
-                )
-                time.sleep(2)
+                if args.upload_to_fossy:
+                    print(f"Triggering upload of {key}")
+                    use_fossy_to.trigger_analysis_for_url_upload_package(
+                        file_download_url=fullURL,
+                        file_name=key,
+                        # file_name=full_file_name,
+                        branch_name="",
+                        folder_id=args.folder_id,
+                    )
+                    time.sleep(2)
                 uploads = use_fossy_to.get_all_uploads_based_on(
-                    folder_id=folder_id,
+                    folder_id=args.folder_id,
                     is_recursive=True,
                     limit=1000,
                     page=1,
                     search_pattern_key=full_file_name,
                     upload_status="",
-                    assignee="-unassigned-",
+                    assignee=assignee,
                     since_yyyy_mm_dd="",
                 )
-
+                validlibscount = validlibscount + 1
+                print(f"{validlibscount}. {full_file_name}")
+                # license listing section
                 for count, upload in enumerate(uploads, start=1):
-                    print(f"{count}. {upload.uploadname} upload_id:{upload.id} ")
+                    print(f"upload_id:{upload.id} ")
+
+                    licenses = use_fossy_to.get_licenses_by_upload_id(upload.id)
+                    licenses = [
+                        (license.name, license.scannerCount) for license in licenses
+                    ]
+                    print(f"License Count:{len(licenses)}")
+                    print("------")
+                    print(licenses)
+                    print("------")
+                # copyright listing & updating section
+                for count, upload in enumerate(uploads, start=1):
+                    # print(f"{count}. {upload.uploadname} upload_id:{upload.id} ")
                     copyrights = use_fossy_to.get_copyrights_by_upload_id(upload.id)
                     copyrights = [copyright.content for copyright in copyrights]
                     copyrightsString = ", ".join(copyrights)
