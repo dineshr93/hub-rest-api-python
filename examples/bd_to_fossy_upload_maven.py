@@ -79,7 +79,7 @@ if args.all:
     ) = args.string_search = True
 
 hub = HubInstance()
-
+folder_id = int(args.folder_id)
 project = hub.get_project_by_name(args.project_name)
 version = hub.get_version_by_name(project, args.version)
 
@@ -344,10 +344,10 @@ use_fossy_to = fossy("config.ini", "prod")
 validlibscount = 0
 for key, value in all_origin_info.items():
     print(f"Component: {key}")
-    if key.lower().startswith(
-        ("k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z")
-    ):
-        continue
+    # if key.lower().startswith(
+    #     ("k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z")
+    # ):
+    #     continue
     bom_component_info = value.get("bom_component_info", "")
     isIgnored = bom_component_info.get("ignored")
     if isIgnored:
@@ -405,8 +405,8 @@ for key, value in all_origin_info.items():
                     print(f"Triggering upload of {key}")
                     use_fossy_to.trigger_analysis_for_url_upload_package(
                         file_download_url=fullURL,
-                        file_name=key,
-                        # file_name=full_file_name,
+                        # file_name=key,
+                        file_name=full_file_name,
                         branch_name="",
                         folder_id=args.folder_id,
                     )
