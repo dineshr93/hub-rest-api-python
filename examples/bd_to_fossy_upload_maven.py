@@ -398,6 +398,7 @@ for key, value in all_origin_info.items():
                 goodurl.append(key)
 
                 if "http:" in fullURL:
+                    logging.debug(f"converting http to https")
                     fullURL = fullURL.replace("http:", "https:")
 
                 # upload to 121 SHM_AOSP folder in fossology production
@@ -408,11 +409,11 @@ for key, value in all_origin_info.items():
                         # file_name=key,
                         file_name=full_file_name,
                         branch_name="",
-                        folder_id=args.folder_id,
+                        folder_id=folder_id,
                     )
                     time.sleep(2)
                 uploads = use_fossy_to.get_all_uploads_based_on(
-                    folder_id=args.folder_id,
+                    folder_id=folder_id,
                     is_recursive=True,
                     limit=1000,
                     page=1,
