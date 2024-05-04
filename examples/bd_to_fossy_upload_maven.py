@@ -369,6 +369,7 @@ for key, value in all_origin_info.items():
             full_file_name = libName + "-" + libVersion + "-sources.jar"
             fullURL = originUrl + full_file_name
             print(fullURL)
+            print(originId)
             copyrightupdatelink = ""
             meta = origin_detail.get("_meta", "")
             links = meta.get("links", "")
