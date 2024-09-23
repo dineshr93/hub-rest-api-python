@@ -4,8 +4,7 @@ import argparse
 
 import logging
 import json
-# py get_scan_missed_import_event.py --base-url=https://blackduck.company.com --token-file=.pt --project=ASTERIX2CLU3D_PR
-# OGRAM --version=AED2_ANDROID_S_2_2024-09-21_00-32 --company=company --no-verify > missing.txt
+# py get_scan_missed_import_event.py --base-url=https://blackduck.company.com --token-file=.pt --project=PROJECT --version=ver --company=company --no-verify > missing.txt
 logging.basicConfig(
     level=logging.INFO,
     format="[%(asctime)s] {%(module)s:%(lineno)d} %(levelname)s - %(message)s"
