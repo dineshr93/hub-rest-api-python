@@ -226,12 +226,12 @@ function dump_bom()
     local totalAddedComponentVersions=$(echo "${bom}" | jq -r '.totalAddedComponentVersions')
     local totalRemovedComponentVersions=$(echo "${bom}" | jq -r '.totalRemovedComponentVersions')
     local totalChangedComponentVersions=$(echo "${bom}" | jq -r '.totalChangedComponentVersions')
-    local itemsAdd=$(echo "${bomAdded}" | jq -r '.items[] | [.component.componentName,.component.componentVersionName]')
-    local itemsAddvs=$(echo "${bomAddedvs}" | jq -r '.items[] | [.component.componentName,.component.componentVersionName]')
-    local itemsRemoved=$(echo "${bomRemoved}" | jq -r '.items[] | [.component.componentName,.component.componentVersionName]')
-    local itemsRemovedvs=$(echo "${bomRemovedvs}" | jq -r '.items[] | [.component.componentName,.component.componentVersionName]')
-    local itemsChanged=$(echo "${bomChanged}" | jq -r '.items[] | [.component.componentName,.component.componentVersionName]')
-    local itemsChangedvs=$(echo "${bomChangedvs}" | jq -r '.items[] | [.component.componentName,.component.componentVersionName]')
+    local itemsAdd=$(echo "${bomAdded}" | jq -r '.items[] | [.component.componentName,.component.componentVersionName,.component.origins[].externalId]')
+    local itemsAddvs=$(echo "${bomAddedvs}" | jq -r '.items[] | [.component.componentName,.component.componentVersionName,.component.origins[].externalId]')
+    local itemsRemoved=$(echo "${bomRemoved}" | jq -r '.items[] | [.component.componentName,.component.componentVersionName,.component.origins[].externalId]')
+    local itemsRemovedvs=$(echo "${bomRemovedvs}" | jq -r '.items[] | [.component.componentName,.component.componentVersionName,.component.origins[].externalId]')
+    local itemsChanged=$(echo "${bomChanged}" | jq -r '.items[] | [.component.componentName,.component.componentVersionName,.component.origins[].externalId]')
+    local itemsChangedvs=$(echo "${bomChangedvs}" | jq -r '.items[] | [.component.componentName,.component.componentVersionName,.component.origins[].externalId]')
 
     
     echo "totalCount $totalCount components..."
