@@ -1,0 +1,41 @@
+python3.10 -m pip install blackduck
+export PYTHONWARNINGS="ignore:Unverified HTTPS request"
+python3.10 -m pip install easy-fossy==2.4.3
+cd examples
+config_file="config.ini"
+python3.10 prepareconfigfile.py $config_file $group_name $fossy_server $token $token_expiry $token_valdity_days
+
+echo PROJECT_NAME=$PROJECT_NAME >.env
+echo PROJECT_VERSION=$PROJECT_VERSION >>.env
+echo BLACKDUCK_URL=$BLACKDUCK_URL >>.env
+echo BLACKDUCK_TOKEN=$BLACKDUCK_TOKEN >>.env
+
+echo {\"baseurl\": \"$BLACKDUCK_URL\",\"api_token\": \"$BLACKDUCK_TOKEN\",\"insecure\": true,\"debug\": false} > .restconfig.json
+
+
+echo "========================Result Section====================================="
+bash bomdiff_for_upload.sh -u $BLACKDUCK_URL -a $BLACKDUCK_TOKEN -p $PROJECT_NAME -v $newversion -w $oldversion -f ./mvn_coordinates.txt
+echo "========================detected mvn_coordinates.txt====================================="
+cat mvn_coordinates.txt
+
+if $upload_to_fossy ;
+then
+	echo "========================fossy_url_uploads.py ${folder_id}====================================="
+    generate_urls=true
+fi
+
+if $generate_urls ;
+then
+    bash generate_maven_urls.sh ./mvn_coordinates.txt ./mvn_urls.txt
+    echo "========================detected mvn_urls.txt====================================="
+    cat mvn_urls.txt
+fi
+
+if $upload_to_fossy ;
+then
+	echo "========================fossy_url_uploads.py ${folder_id}====================================="
+    python3.10 fossy_url_uploads.py --urls_file ./mvn_urls.txt --folder_num $folder_id;
+fi
+
+
+#echo "${OUTPUT}" | mail -s "bomdiffAsterix : $totalAddedComponents: $totalRemovedComponents" dineshr93@gmail.com Dinesh.Ravi@elektrobit.com Laura.Irlinger@elektrobit.com
