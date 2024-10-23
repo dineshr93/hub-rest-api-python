@@ -34,7 +34,7 @@ def create_version_notices_report(self, version, format="TEXT", include_copyrigh
         'reportFormat': format
     }
     if include_copyright_info:
-        post_data.update({'categories': ["COPYRIGHT_TEXT"] })
+        post_data.update({'categories': ["COPYRIGHT_TEXT","LICENSE_DATA","LICENSE_TEXT"] })
 
     notices_report_url = self.get_link(version, 'licenseReports')
     return self.execute_post(notices_report_url, post_data)
