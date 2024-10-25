@@ -32,7 +32,7 @@ def create_version_notices_report(self, version, format="TEXT", include_copyrigh
         'versionId': object_id(version),
         'reportType': 'VERSION_LICENSE',
         'reportFormat': format,
-        'includeSubprojects' : true
+        'includeSubprojects' : True
     }
     if include_copyright_info:
         post_data.update({'categories': ["COPYRIGHT_TEXT","LICENSE_DATA","LICENSE_TEXT"] })
