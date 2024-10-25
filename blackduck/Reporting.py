@@ -31,7 +31,7 @@ def create_version_notices_report(self, version, format="TEXT", include_copyrigh
     post_data = {
         'versionId': object_id(version),
         'reportType': 'VERSION_LICENSE',
-        'reportFormat': format
+        'reportFormat': format,
         'includeSubprojects' : true
     }
     if include_copyright_info:
