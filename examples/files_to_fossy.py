@@ -1,6 +1,8 @@
 from easy_fossy import easy_fossy as fossy
 import os
 import time
+import sys
+import io
 import argparse
 
 use_fossy_to = fossy("config.ini", "prod",verify=False)
@@ -19,15 +21,26 @@ pkg_folder = args.pkg_folder
 folder_id = args.folder_num
 
 # Open the file and read it line by line
-for index,file_name in enumerate(os.listdir(pkg_folder)):
+for index,file_name in enumerate(os.listdir(pkg_folder),start=1):
     file_path = os.path.join(pkg_folder, file_name)
     if os.path.isfile(file_path):  # Ensure it's a file, not a subdirectory
         print(file_name)
 
+        # Capture stdout
+        stdout_capture = io.StringIO()
+        sys.stdout = stdout_capture  # Redirect stdout
 
-        print(f"Triggering upload of {file_name} in folder id {folder_id}")
+        print(f"{index} Triggering upload of {file_name} in folder id {folder_id}")
         use_fossy_to.trigger_analysis_for_upload_package(
             file_path=file_path,
             folder_id=folder_id)
         
-        time.sleep(10)
+        sys.stdout = sys.__stdout__  # Reset stdout
+        output = stdout_capture.getvalue()  # Get captured output
+        print("====")
+        print(output)
+        print("====")
+        if "already present in folder" not in output:
+            time.sleep(10)
+        else:
+            os.remove(file_path)
