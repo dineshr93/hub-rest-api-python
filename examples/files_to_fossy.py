@@ -42,5 +42,7 @@ for index,file_name in enumerate(os.listdir(pkg_folder),start=1):
         print("====")
         if "already present in folder" not in output:
             time.sleep(10)
+            if "Computed new Job ID is" in output:
+                os.remove(file_path)
         else:
             os.remove(file_path)
