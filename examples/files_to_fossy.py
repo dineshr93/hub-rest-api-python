@@ -16,6 +16,8 @@ parser.add_argument('-n', '--folder_num', type=int, required=True, help='FOSSolo
 
 # Parse the arguments
 args = parser.parse_args()
+print('to avoid unnecessary errors')
+print('export PYTHONWARNINGS="ignore:Unverified HTTPS request"')
 
 pkg_folder = args.pkg_folder
 folder_id = args.folder_num
@@ -41,8 +43,13 @@ for index,file_name in enumerate(os.listdir(pkg_folder),start=1):
         print(output)
         print("====")
         if "already present in folder" not in output:
-            time.sleep(10)
-            if "Computed new Job ID is" in output:
+            time.sleep(15)
+            if "Computed new Job ID is :Folder id" not in output and "Computed new Job ID is" in output:
                 os.remove(file_path)
+            elif "Computed new Job ID is :Folder id" in output:
+                print(f" problem uploading {index} {file_name}")
+                sys.exit()
+
+        
         else:
             os.remove(file_path)
