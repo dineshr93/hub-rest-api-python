@@ -720,10 +720,13 @@ def get_summary_group_label(no):
 
 def render_summary_table(project_summaries, title="OVERALL SUMMARY"):
     """Render a summary table for the given project summaries."""
+    now = datetime.now(DISPLAY_TIMEZONE) if DISPLAY_TIMEZONE else datetime.now()
+    state_as_of = now.strftime("%Y-%m-%d %H:%M:%S %Z").strip()
+
     lines = [
         "",
         "=" * 169,
-        title,
+        f"{title} [state as of: {state_as_of}]",
         "=" * 169,
         f"{'no':<5} | {'projects':<42} | {'last_scanned':<24} | {'unreview_components_count':<23} | {'security_cvss>7':<23} | {'security_cvss<7':<23} | {'misc':<10} | {'link'}",
         "-" * 169,
@@ -853,8 +856,11 @@ def render_project_report(
     
     # Add project-specific summary at the top
     if summary_data:
+        now = datetime.now(DISPLAY_TIMEZONE) if DISPLAY_TIMEZONE else datetime.now()
+        state_as_of = now.strftime("%Y-%m-%d %H:%M:%S %Z").strip()
+
         lines.extend([
-            "PROJECT SUMMARY",
+            f"PROJECT SUMMARY [state as of: {state_as_of}]",
             "-" * 169,
             f"{'no':<5} | {'projects':<42} | {'last_scanned':<23} | {'unreview_components_count':<23} | {'security_cvss>7':<23} | {'security_cvss<7':<23} | {'misc':<10} |",
             "-" * 169,
