@@ -16,6 +16,7 @@ from blackduck.HubRestApi import HubInstance
 
 
 BOM_ACCEPT = "application/vnd.blackducksoftware.bill-of-materials-6+json"
+VULNERABILITY_DIGEST_ACCEPT = "application/vnd.blackducksoftware.vulnerability-digest-1+json"
 SCAN_ACCEPT_HEADERS = [
     "application/vnd.blackducksoftware.scan-6+json",
     "application/vnd.blackducksoftware.scan-5+json",
@@ -182,7 +183,66 @@ def get_unreviewed_components(hub, version, components=None):
     return sorted(set(unreviewed), key=lambda item: (item[0].lower(), item[1].lower()))
 
 
-def format_vulnerability_ids(vulnerability, item=None):
+def _extract_related_id_from_vulnerability_record(vuln):
+    """Pull the related vulnerability ID out of a GET /api/vulnerabilities/{id} record.
+
+    Checks the top-level relatedVulnerability field first, then falls back to the
+    _meta.links entry with rel "related-vulnerability" (the link BDSA records use to
+    point at their mapped CVE).
+    """
+    if not isinstance(vuln, dict):
+        return None
+
+    related_vuln = str(vuln.get("relatedVulnerability") or "").strip()
+    if related_vuln:
+        return related_vuln.rstrip("/").split("/")[-1]
+
+    for link in vuln.get("_meta", {}).get("links", []):
+        if link.get("rel") == "related-vulnerability":
+            href = str(link.get("href") or "").rstrip("/")
+            if href:
+                return href.split("/")[-1]
+
+    return None
+
+
+def fetch_related_vulnerability_id(hub, vulnerability_id, cache):
+    """Look up the related CVE (or other) ID for a vulnerability (e.g. a BDSA).
+
+    Fetches the vulnerability's own record from GET /api/vulnerabilities/{id} and follows
+    its related-vulnerability link/field. Falls back to /vulnerabilities-digest (which also
+    exposes a relatedVulnerabilityId) if the direct record doesn't have one.
+    """
+    if vulnerability_id in cache:
+        return cache[vulnerability_id]
+
+    related_id = None
+    try:
+        vuln = hub.get_vulnerabilities(vulnerability_id)
+    except Exception:
+        vuln = None
+    related_id = _extract_related_id_from_vulnerability_record(vuln)
+
+    if not related_id:
+        url = hub.get_apibase() + "/vulnerabilities-digest" + hub._get_parameter_string(
+            {"q": "vulnerabilityId:{}".format(vulnerability_id), "limit": 1}
+        )
+        try:
+            response = hub.execute_get(url, custom_headers={"Accept": VULNERABILITY_DIGEST_ACCEPT})
+            items = response.json().get("items", [])
+        except Exception:
+            items = []
+
+        for digest_item in items:
+            if digest_item.get("vulnerabilityId") == vulnerability_id:
+                related_id = digest_item.get("relatedVulnerabilityId")
+                break
+
+    cache[vulnerability_id] = related_id
+    return related_id
+
+
+def format_vulnerability_ids(vulnerability, item=None, hub=None, digest_cache=None):
     """Format vulnerability ID(s) with links.
     
     Extracts CVE, USN IDs from various fields and formats with URLs.
@@ -191,6 +251,9 @@ def format_vulnerability_ids(vulnerability, item=None):
     Args:
         vulnerability: The vulnerability object from API response
         item: Optional full item object to search for additional CVE/EUVD data
+        hub: Optional HubInstance, used to fall back to /vulnerabilities-digest when
+            no related CVE is present on the vulnerability record itself
+        digest_cache: Optional dict used to cache /vulnerabilities-digest lookups across calls
     """
     vuln_id = (
         vulnerability.get("vulnerabilityName")
@@ -265,7 +328,18 @@ def format_vulnerability_ids(vulnerability, item=None):
                     add_if_unique(rel_id, "CVE")
                 elif rel_id.startswith("USN-"):
                     add_if_unique(rel_id, "USN")
-    
+
+    # Fall back to the /vulnerabilities-digest endpoint for BDSA entries that don't
+    # carry their related CVE on the BOM vulnerability record itself.
+    if not related_ids and hub is not None and vuln_id.startswith("BDSA-"):
+        cache = digest_cache if digest_cache is not None else {}
+        related_id = fetch_related_vulnerability_id(hub, vuln_id, cache)
+        if related_id:
+            if related_id.startswith("CVE-"):
+                add_if_unique(related_id, "CVE")
+            elif related_id.startswith("USN-"):
+                add_if_unique(related_id, "USN")
+
     if related_ids:
         return f"{vuln_id} [{', '.join(related_ids)}]"
     return vuln_id
@@ -280,11 +354,14 @@ def get_security_risks(hub, version):
 
     risks = []
     user_display_cache = {}
+    vuln_digest_cache = {}
     for item in vulnerable_components:
         vulnerability_with_remediation = item.get("vulnerabilityWithRemediation", {})
         vulnerability = vulnerability_with_remediation or item.get("vulnerability", {})
 
-        vulnerability_name = format_vulnerability_ids(vulnerability, item)
+        vulnerability_name = format_vulnerability_ids(
+            vulnerability, item, hub=hub, digest_cache=vuln_digest_cache
+        )
         cvss_score = vulnerability.get("overallScore")
         if cvss_score is None:
             cvss_score = vulnerability.get("baseScore")
