@@ -183,6 +183,64 @@ def get_unreviewed_components(hub, version, components=None):
     return sorted(set(unreviewed), key=lambda item: (item[0].lower(), item[1].lower()))
 
 
+# Order used both to pick a component's worst license risk severity and to
+# classify that severity as high or low priority in reports/summaries.
+LICENSE_RISK_SEVERITY_ORDER = ["CRITICAL", "HIGH", "MEDIUM", "LOW", "UNKNOWN"]
+LICENSE_RISK_HIGH_PRIORITY_LEVELS = {"CRITICAL", "HIGH"}
+
+
+def get_component_license_risk_level(component):
+    """Return a component's worst license risk severity, or None if it's OK/has no risk."""
+    counts = component.get("licenseRiskProfile", {}).get("counts", [])
+    present = {count.get("countType") for count in counts if count.get("count")}
+    for level in LICENSE_RISK_SEVERITY_ORDER:
+        if level in present:
+            return level
+    return None
+
+
+def format_license_names(component):
+    names = []
+    for license_entry in component.get("licenses", []):
+        name = license_entry.get("licenseDisplay")
+        if name and name not in names:
+            names.append(name)
+    return ", ".join(names) if names else "Unknown License"
+
+
+def get_license_risks(components):
+    """Build (component_name, component_version, risk_level, license_names, ownership) rows
+    for BOM components whose licenseRiskProfile reports a risk higher than OK.
+    """
+    risks = []
+    for component in components:
+        risk_level = get_component_license_risk_level(component)
+        if not risk_level:
+            continue
+
+        licenses = component.get("licenses", [])
+        ownership = licenses[0].get("ownership", "UNKNOWN") if licenses else "UNKNOWN"
+
+        risks.append(
+            (
+                component.get("componentName", "<unknown component>"),
+                component.get("componentVersionName", "<unknown version>"),
+                risk_level,
+                format_license_names(component),
+                ownership,
+            )
+        )
+
+    return sorted(set(risks), key=lambda item: (item[0].lower(), item[1].lower()))
+
+
+def split_license_risks_by_priority(license_risks):
+    """Split license risk rows into (high_priority, low_priority) by severity."""
+    high_priority = [risk for risk in license_risks if risk[2] in LICENSE_RISK_HIGH_PRIORITY_LEVELS]
+    low_priority = [risk for risk in license_risks if risk[2] not in LICENSE_RISK_HIGH_PRIORITY_LEVELS]
+    return high_priority, low_priority
+
+
 def _extract_related_id_from_vulnerability_record(vuln):
     """Pull the related vulnerability ID out of a GET /api/vulnerabilities/{id} record.
 
@@ -805,7 +863,7 @@ def render_summary_table(project_summaries, title="OVERALL SUMMARY"):
         "=" * 169,
         f"{title} [state as of: {state_as_of}]",
         "=" * 169,
-        f"{'no':<5} | {'projects':<42} | {'last_scanned':<24} | {'unreview_components_count':<23} | {'security_cvss>7':<23} | {'security_cvss<7':<23} | {'misc':<10} | {'link'}",
+        f"{'no':<5} | {'projects':<42} | {'last_scanned':<24} | {'unreview_components_count':<23} | {'security_cvss>7':<23} | {'security_cvss<7':<23} | {'license_risk_high':<20} | {'license_risk_low':<20} | {'misc':<10} | {'link'}",
         "-" * 169,
     ]
     
@@ -822,6 +880,8 @@ def render_summary_table(project_summaries, title="OVERALL SUMMARY"):
         unreview_components_count = summary['unreview_components_count']
         security_cvss_gt_7 = summary['security_cvss>7']
         security_cvss_lt_7 = summary['security_cvss<7']
+        license_risk_high = summary['license_risk_high']
+        license_risk_low = summary['license_risk_low']
         last_scanned = summary['last_scanned']
         misc = summary['misc']
         
@@ -832,7 +892,7 @@ def render_summary_table(project_summaries, title="OVERALL SUMMARY"):
         # Append the plain link at the end of the line (not padded) so Jenkins'
         # console log auto-linkifies it. OSC-8 escape codes are avoided here
         # because Jenkins does not interpret them and shows them as garbage.
-        lines.append(f"{no:<5} | {projects:<42} | {last_scanned:<22} | {unreview_components_count:<23} | {security_cvss_gt_7:<23} | {security_cvss_lt_7:<23} | {misc:<10} | {blackduck_link}")
+        lines.append(f"{no:<5} | {projects:<42} | {last_scanned:<22} | {unreview_components_count:<23} | {security_cvss_gt_7:<23} | {security_cvss_lt_7:<23} | {license_risk_high:<20} | {license_risk_low:<20} | {misc:<10} | {blackduck_link}")
     
     lines.append("=" * 169)
     return "\n".join(lines)
@@ -910,6 +970,19 @@ def render_grouped_risks(risks):
     return lines
 
 
+def render_grouped_license_risks(license_risks):
+    """Render license risk rows, one line per component (1., 2., ...)."""
+    lines = []
+    for index, (component_name, component_version, risk_level, license_names, ownership) in enumerate(
+        license_risks, start=1
+    ):
+        lines.append(
+            f"{index}. {component_name} {component_version}: {risk_level} "
+            f"(license: {license_names}, ownership: {ownership})"
+        )
+    return lines
+
+
 def render_project_report(
     report_number,
     total_reports,
@@ -920,8 +993,10 @@ def render_project_report(
     blackduck_link,
     unreviewed_components,
     security_risks,
+    license_risks=None,
     summary_data=None,
 ):
+    license_risks = license_risks or []
     lines = [
         "=" * 169,
         (
@@ -939,7 +1014,7 @@ def render_project_report(
         lines.extend([
             f"PROJECT SUMMARY [state as of: {state_as_of}]",
             "-" * 169,
-            f"{'no':<5} | {'projects':<42} | {'last_scanned':<23} | {'unreview_components_count':<23} | {'security_cvss>7':<23} | {'security_cvss<7':<23} | {'misc':<10} |",
+            f"{'no':<5} | {'projects':<42} | {'last_scanned':<23} | {'unreview_components_count':<23} | {'security_cvss>7':<23} | {'security_cvss<7':<23} | {'license_risk_high':<20} | {'license_risk_low':<20} | {'misc':<10} |",
             "-" * 169,
         ])
         
@@ -948,6 +1023,8 @@ def render_project_report(
         unreview_components_count = summary_data['unreview_components_count']
         security_cvss_gt_7 = summary_data['security_cvss>7']
         security_cvss_lt_7 = summary_data['security_cvss<7']
+        license_risk_high = summary_data['license_risk_high']
+        license_risk_low = summary_data['license_risk_low']
         last_scanned = summary_data['last_scanned']
         misc = summary_data['misc']
         
@@ -958,7 +1035,7 @@ def render_project_report(
         # Plain link at end of line (not padded) so Jenkins' console log
         # auto-linkifies it; OSC-8 escapes are not used since Jenkins doesn't
         # interpret them.
-        lines.append(f"{no:<5} | {projects:<42} | {last_scanned:<22} | {unreview_components_count:<23} | {security_cvss_gt_7:<23} | {security_cvss_lt_7:<23} | {misc:<10} |")
+        lines.append(f"{no:<5} | {projects:<42} | {last_scanned:<22} | {unreview_components_count:<23} | {security_cvss_gt_7:<23} | {security_cvss_lt_7:<23} | {license_risk_high:<20} | {license_risk_low:<20} | {misc:<10} |")
         lines.append("-" * 169)
     
     lines.extend([
@@ -1003,6 +1080,30 @@ def render_project_report(
     else:
         lines.append("- None")
 
+    lines.extend([
+        "",
+        "~" * 80,
+        "LICENSE ISSUES",
+        "~" * 80,
+    ])
+
+    license_high_priority, license_low_priority = split_license_risks_by_priority(license_risks)
+
+    lines.append("License issues (critical/high):")
+    if license_high_priority:
+        lines.append("-" * 80)
+        lines.extend(render_grouped_license_risks(license_high_priority))
+    else:
+        lines.append("- None")
+
+    lines.append("")
+    lines.append("License issues (medium/low/unknown):")
+    if license_low_priority:
+        lines.append("-" * 80)
+        lines.extend(render_grouped_license_risks(license_low_priority))
+    else:
+        lines.append("- None")
+
     return "\n".join(lines)
 
 
@@ -1025,6 +1126,7 @@ def main():
             all_components = get_all_bom_components(hub, version)
             unreviewed_components = get_unreviewed_components(hub, version, all_components)
             security_risks = get_security_risks(hub, version)
+            license_risks = get_license_risks(all_components)
             total_bom = get_bom_total_count(all_components)
             
             unreview_components_count = len(unreviewed_components)
@@ -1060,6 +1162,10 @@ def main():
                 low_priority_risks_count, low_priority_ignored_count, low_priority_new_count
             )
 
+            license_risks_high, license_risks_low = split_license_risks_by_priority(license_risks)
+            license_risk_high_count = len(license_risks_high)
+            license_risk_low_count = len(license_risks_low)
+
             project_summaries.append({
                 'no': report_number,
                 'projects': f"{project_name} {version_name}",
@@ -1068,6 +1174,8 @@ def main():
                 'unreview_components_count': unreview_components_count,
                 'security_cvss>7': security_cvss_gt_7,
                 'security_cvss<7': security_cvss_lt_7,
+                'license_risk_high': license_risk_high_count,
+                'license_risk_low': license_risk_low_count,
                 'misc': f"BOM:{total_bom}",
             })
             
@@ -1080,6 +1188,8 @@ def main():
                 'unreview_components_count': unreview_components_count,
                 'security_cvss>7': security_cvss_gt_7,
                 'security_cvss<7': security_cvss_lt_7,
+                'license_risk_high': license_risk_high_count,
+                'license_risk_low': license_risk_low_count,
                 'misc': f"BOM:{total_bom}",
             }
             
@@ -1094,6 +1204,7 @@ def main():
                     blackduck_link,
                     unreviewed_components,
                     security_risks,
+                    license_risks=license_risks,
                     summary_data=project_summary,
                 )
             )
@@ -1116,6 +1227,8 @@ def main():
                 'unreview_components_count': 0,
                 'security_cvss>7': 0,
                 'security_cvss<7': 0,
+                'license_risk_high': 0,
+                'license_risk_low': 0,
                 'misc': 'N/A',
             })
 
