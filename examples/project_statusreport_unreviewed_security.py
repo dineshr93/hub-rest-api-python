@@ -502,20 +502,26 @@ def get_security_risks(hub, version):
 
 
 def format_count_with_ignored(count, ignored_count, new_count=0):
-    """Format a risk count, appending ignored/new counts in brackets if any.
+    """Format a risk count, flagging nonzero counts and appending ignored/new counts in brackets if any.
 
-    Example: format_count_with_ignored(7, 3, 2) -> "7 (ignored: 3, new: 2)"
-    Example: format_count_with_ignored(7, 3, 0) -> "7 (ignored: 3)"
-    Example: format_count_with_ignored(7, 0, 2) -> "7 (new: 2)"
+    Example: format_count_with_ignored(7, 3, 2) -> "7 * (ignored: 3, new: 2)"
+    Example: format_count_with_ignored(7, 3, 0) -> "7 * (ignored: 3)"
+    Example: format_count_with_ignored(0, 0, 2) -> "0 (new: 2)"
     """
     details = []
     if ignored_count:
         details.append(f"ignored: {ignored_count}")
     if new_count:
         details.append(f"new: {new_count}")
+    base = format_count_with_indicator(count)
     if details:
-        return f"{count} ({', '.join(details)})"
-    return str(count)
+        return f"{base} ({', '.join(details)})"
+    return base
+
+
+def format_count_with_indicator(count, indicator="*"):
+    """Flag a nonzero count with a short marker, without changing its column width footprint."""
+    return f"{count} {indicator}" if count else str(count)
 
 
 def format_cvss_score(score):
@@ -869,18 +875,82 @@ def format_projects_cell(projects):
     return truncate_projects(projects)
 
 
+def format_table(headers, rows):
+    """Left-align a table with each column sized to fit its longest header/cell.
+
+    Returns (header_line, separator_line, data_lines) so callers can bound the
+    table with '=' / '-' rules of the exact same width, regardless of how long
+    variable-length cells (e.g. "13 * (ignored: 2, new: 11)") turn out to be.
+    """
+    widths = [len(str(header)) for header in headers]
+    for row in rows:
+        for index, cell in enumerate(row):
+            widths[index] = max(widths[index], len(str(cell)))
+
+    def format_row(cells):
+        return " | ".join(f"{str(cell):<{widths[index]}}" for index, cell in enumerate(cells))
+
+    header_line = format_row(headers)
+    separator_line = "-" * len(header_line)
+    data_lines = [format_row(row) for row in rows]
+    return header_line, separator_line, data_lines
+
+
+def insert_group_markers(project_summaries, data_lines):
+    """Interleave '--- GROUP LABEL ---' marker lines at the start of each named group."""
+    out = []
+    current_group = None
+    for summary, line in zip(project_summaries, data_lines):
+        group_label = get_summary_group_label(summary['no'])
+        if group_label is not None and group_label != current_group:
+            out.append(f"--- {group_label} ---")
+            current_group = group_label
+        out.append(line)
+    return out
+
+
 def render_summary_table(project_summaries, title="OVERALL SUMMARY"):
     """Render a summary table for the given project summaries."""
     now = datetime.now(DISPLAY_TIMEZONE) if DISPLAY_TIMEZONE else datetime.now()
     state_as_of = now.strftime("%Y-%m-%d %H:%M:%S %Z").strip()
 
+    security_headers = ["no", "projects", "last_scanned", "unreviewed_count", "security_cvss>7", "security_cvss<7", "misc"]
+    license_headers = ["no", "projects", "last_scanned", "unreviewed_count", "license_risk_high", "license_risk_low", "misc"]
+    link_headers = ["no", "projects", "link"]
+
+    security_rows = []
+    license_rows = []
+    link_rows = []
+
+    for summary in project_summaries:
+        projects_cell = format_projects_cell(summary['projects'])
+        unreviewed_count_display = format_count_with_indicator(summary['unreviewed_count'])
+        license_risk_high_display = format_count_with_indicator(summary['license_risk_high'])
+        license_risk_low_display = format_count_with_indicator(summary['license_risk_low'])
+
+        security_rows.append([
+            summary['no'], projects_cell, summary['last_scanned'], unreviewed_count_display,
+            summary['security_cvss>7'], summary['security_cvss<7'], summary['misc'],
+        ])
+        license_rows.append([
+            summary['no'], projects_cell, summary['last_scanned'], unreviewed_count_display,
+            license_risk_high_display, license_risk_low_display, summary['misc'],
+        ])
+        link_rows.append([summary['no'], projects_cell, summary.get('blackduck_link') or ""])
+
+    security_header_line, security_sep, security_data = format_table(security_headers, security_rows)
+    license_header_line, license_sep, license_data = format_table(license_headers, license_rows)
+    link_header_line, link_sep, link_data = format_table(link_headers, link_rows)
+
     lines = [
         "",
-        "=" * 169,
+        "=" * len(security_header_line),
         f"{title} SECURITY RISKS [state as of: {state_as_of}]",
-        "=" * 169,
-        f"{'no':<5} | {'projects':<42} | {'last_scanned':<24} | {'unreview_components_count':<23} | {'security_cvss>7':<23} | {'security_cvss<7':<23} | {'misc':<10}",
-        "-" * 169,
+        "=" * len(security_header_line),
+        security_header_line,
+        security_sep,
+        *insert_group_markers(project_summaries, security_data),
+        "=" * len(security_header_line),
     ]
 
     # License risks are rendered in a separate table below since they were
@@ -888,55 +958,26 @@ def render_summary_table(project_summaries, title="OVERALL SUMMARY"):
     license_lines = [
         "",
         f"{title} LICENSE RISKS [state as of: {state_as_of}]",
-        "-" * 169,
-        f"{'no':<5} | {'projects':<42} | {'last_scanned':<24} | {'unreview_components_count':<23} | {'license_risk_high':<20} | {'license_risk_low':<20} | {'misc':<10}",
-        "-" * 169,
+        license_sep,
+        license_header_line,
+        license_sep,
+        *insert_group_markers(project_summaries, license_data),
+        "=" * len(license_header_line),
     ]
 
     # Links are rendered in a separate table below since they are long enough
     # to push the "misc" column out of view in narrow terminals/console logs.
+    # The link stays plain (no OSC-8) so Jenkins' console log auto-linkifies it.
     link_lines = [
         "",
         f"{title} LINKS",
-        "-" * 169,
-        f"{'no':<5} | {'projects':<42} | {'link'}",
-        "-" * 169,
+        link_sep,
+        link_header_line,
+        link_sep,
+        *insert_group_markers(project_summaries, link_data),
+        link_sep,
     ]
 
-    current_group = None
-    for summary in project_summaries:
-        no = summary['no']
-        group_label = get_summary_group_label(no)
-        if group_label is not None and group_label != current_group:
-            lines.append(f"--- {group_label} ---")
-            license_lines.append(f"--- {group_label} ---")
-            link_lines.append(f"--- {group_label} ---")
-            current_group = group_label
-
-        projects = summary['projects']
-        blackduck_link = summary.get('blackduck_link') or ""
-        unreview_components_count = summary['unreview_components_count']
-        security_cvss_gt_7 = summary['security_cvss>7']
-        security_cvss_lt_7 = summary['security_cvss<7']
-        license_risk_high = summary['license_risk_high']
-        license_risk_low = summary['license_risk_low']
-        last_scanned = summary['last_scanned']
-        misc = summary['misc']
-
-        projects_cell = format_projects_cell(projects)
-
-        lines.append(f"{no:<5} | {projects_cell:<42} | {last_scanned:<22} | {unreview_components_count:<23} | {security_cvss_gt_7:<23} | {security_cvss_lt_7:<23} | {misc:<10}")
-
-        license_lines.append(f"{no:<5} | {projects_cell:<42} | {last_scanned:<22} | {unreview_components_count:<23} | {license_risk_high:<20} | {license_risk_low:<20} | {misc:<10}")
-
-        # Append the plain link at the end of the line (not padded) so Jenkins'
-        # console log auto-linkifies it. OSC-8 escape codes are avoided here
-        # because Jenkins does not interpret them and shows them as garbage.
-        link_lines.append(f"{no:<5} | {projects_cell:<42} | {blackduck_link}")
-
-    lines.append("=" * 169)
-    license_lines.append("=" * 169)
-    link_lines.append("=" * 169)
     return "\n".join(lines + license_lines + link_lines)
 
 
@@ -1053,27 +1094,31 @@ def render_project_report(
         now = datetime.now(DISPLAY_TIMEZONE) if DISPLAY_TIMEZONE else datetime.now()
         state_as_of = now.strftime("%Y-%m-%d %H:%M:%S %Z").strip()
 
+        headers = [
+            "no", "projects", "last_scanned", "unreviewed_count", "security_cvss>7",
+            "security_cvss<7", "license_risk_high", "license_risk_low", "misc",
+        ]
+        row = [
+            summary_data['no'],
+            format_projects_cell(summary_data['projects']),
+            summary_data['last_scanned'],
+            format_count_with_indicator(summary_data['unreviewed_count']),
+            summary_data['security_cvss>7'],
+            summary_data['security_cvss<7'],
+            format_count_with_indicator(summary_data['license_risk_high']),
+            format_count_with_indicator(summary_data['license_risk_low']),
+            summary_data['misc'],
+        ]
+        header_line, separator_line, data_lines = format_table(headers, [row])
+
         lines.extend([
             f"PROJECT SUMMARY [state as of: {state_as_of}]",
-            "-" * 169,
-            f"{'no':<5} | {'projects':<42} | {'last_scanned':<23} | {'unreview_components_count':<23} | {'security_cvss>7':<23} | {'security_cvss<7':<23} | {'license_risk_high':<20} | {'license_risk_low':<20} | {'misc':<10} |",
-            "-" * 169,
+            separator_line,
+            f"{header_line} |",
+            separator_line,
+            f"{data_lines[0]} |",
+            separator_line,
         ])
-        
-        no = summary_data['no']
-        projects = summary_data['projects']
-        unreview_components_count = summary_data['unreview_components_count']
-        security_cvss_gt_7 = summary_data['security_cvss>7']
-        security_cvss_lt_7 = summary_data['security_cvss<7']
-        license_risk_high = summary_data['license_risk_high']
-        license_risk_low = summary_data['license_risk_low']
-        last_scanned = summary_data['last_scanned']
-        misc = summary_data['misc']
-
-        projects_cell = format_projects_cell(projects)
-
-        lines.append(f"{no:<5} | {projects_cell:<42} | {last_scanned:<22} | {unreview_components_count:<23} | {security_cvss_gt_7:<23} | {security_cvss_lt_7:<23} | {license_risk_high:<20} | {license_risk_low:<20} | {misc:<10} |")
-        lines.append("-" * 169)
     
     lines.extend([
         f"Black Duck link: {blackduck_link}",
@@ -1166,7 +1211,7 @@ def main():
             license_risks = get_license_risks(all_components)
             total_bom = get_bom_total_count(all_components)
             
-            unreview_components_count = len(unreviewed_components)
+            unreviewed_count = len(unreviewed_components)
             
             high_priority_risks_count = 0
             low_priority_risks_count = 0
@@ -1208,7 +1253,7 @@ def main():
                 'projects': f"{project_name} {version_name}",
                 'blackduck_link': blackduck_link,
                 'last_scanned': scan_date,
-                'unreview_components_count': unreview_components_count,
+                'unreviewed_count': unreviewed_count,
                 'security_cvss>7': security_cvss_gt_7,
                 'security_cvss<7': security_cvss_lt_7,
                 'license_risk_high': license_risk_high_count,
@@ -1222,7 +1267,7 @@ def main():
                 'projects': f"{project_name} {version_name}",
                 'blackduck_link': blackduck_link,
                 'last_scanned': scan_date,
-                'unreview_components_count': unreview_components_count,
+                'unreviewed_count': unreviewed_count,
                 'security_cvss>7': security_cvss_gt_7,
                 'security_cvss<7': security_cvss_lt_7,
                 'license_risk_high': license_risk_high_count,
@@ -1261,7 +1306,7 @@ def main():
                 'projects': f"{project_name} {version_name}",
                 'blackduck_link': None,
                 'last_scanned': 'No data',
-                'unreview_components_count': 0,
+                'unreviewed_count': 0,
                 'security_cvss>7': 0,
                 'security_cvss<7': 0,
                 'license_risk_high': 0,
