@@ -408,6 +408,12 @@ def get_security_risks(hub, version):
     if not risks_url:
         risks_url = f"{version['_meta']['href']}/vulnerable-bom-components"
 
+    # Without this, unscored related CVEs (e.g. for some BDSAs) are omitted by the API.
+    parsed_risks_url = urlsplit(risks_url)
+    risks_query = dict(parse_qsl(parsed_risks_url.query, keep_blank_values=True))
+    risks_query["showUnscoredRelatedVulnerability"] = "true"
+    risks_url = urlunsplit(parsed_risks_url._replace(query=urlencode(risks_query)))
+
     vulnerable_components = fetch_all_items(hub, risks_url, BOM_ACCEPT, page_size=250)
 
     risks = []
@@ -863,16 +869,27 @@ def render_summary_table(project_summaries, title="OVERALL SUMMARY"):
         "=" * 169,
         f"{title} [state as of: {state_as_of}]",
         "=" * 169,
-        f"{'no':<5} | {'projects':<42} | {'last_scanned':<24} | {'unreview_components_count':<23} | {'security_cvss>7':<23} | {'security_cvss<7':<23} | {'license_risk_high':<20} | {'license_risk_low':<20} | {'misc':<10} | {'link'}",
+        f"{'no':<5} | {'projects':<42} | {'last_scanned':<24} | {'unreview_components_count':<23} | {'security_cvss>7':<23} | {'security_cvss<7':<23} | {'license_risk_high':<20} | {'license_risk_low':<20} | {'misc':<10}",
         "-" * 169,
     ]
-    
+
+    # Links are rendered in a separate table below since they are long enough
+    # to push the "misc" column out of view in narrow terminals/console logs.
+    link_lines = [
+        "",
+        f"{title} LINKS",
+        "-" * 169,
+        f"{'no':<5} | {'projects':<42} | {'link'}",
+        "-" * 169,
+    ]
+
     current_group = None
     for summary in project_summaries:
         no = summary['no']
         group_label = get_summary_group_label(no)
         if group_label is not None and group_label != current_group:
             lines.append(f"--- {group_label} ---")
+            link_lines.append(f"--- {group_label} ---")
             current_group = group_label
 
         projects = summary['projects']
@@ -889,13 +906,16 @@ def render_summary_table(project_summaries, title="OVERALL SUMMARY"):
         if len(projects) > 42:
             projects = projects[:39] + "..."
         
+        lines.append(f"{no:<5} | {projects:<42} | {last_scanned:<22} | {unreview_components_count:<23} | {security_cvss_gt_7:<23} | {security_cvss_lt_7:<23} | {license_risk_high:<20} | {license_risk_low:<20} | {misc:<10}")
+
         # Append the plain link at the end of the line (not padded) so Jenkins'
         # console log auto-linkifies it. OSC-8 escape codes are avoided here
         # because Jenkins does not interpret them and shows them as garbage.
-        lines.append(f"{no:<5} | {projects:<42} | {last_scanned:<22} | {unreview_components_count:<23} | {security_cvss_gt_7:<23} | {security_cvss_lt_7:<23} | {license_risk_high:<20} | {license_risk_low:<20} | {misc:<10} | {blackduck_link}")
-    
+        link_lines.append(f"{no:<5} | {projects:<42} | {blackduck_link}")
+
     lines.append("=" * 169)
-    return "\n".join(lines)
+    link_lines.append("=" * 169)
+    return "\n".join(lines + link_lines)
 
 
 def format_risk_details(risk):
