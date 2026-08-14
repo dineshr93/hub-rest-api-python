@@ -869,7 +869,17 @@ def render_summary_table(project_summaries, title="OVERALL SUMMARY"):
         "=" * 169,
         f"{title} [state as of: {state_as_of}]",
         "=" * 169,
-        f"{'no':<5} | {'projects':<42} | {'last_scanned':<24} | {'unreview_components_count':<23} | {'security_cvss>7':<23} | {'security_cvss<7':<23} | {'license_risk_high':<20} | {'license_risk_low':<20} | {'misc':<10}",
+        f"{'no':<5} | {'projects':<42} | {'last_scanned':<24} | {'unreview_components_count':<23} | {'security_cvss>7':<23} | {'security_cvss<7':<23} | {'misc':<10}",
+        "-" * 169,
+    ]
+
+    # License risks are rendered in a separate table below since they were
+    # crowding out the "misc" column in narrow terminals/console logs.
+    license_lines = [
+        "",
+        f"{title} LICENSE RISKS",
+        "-" * 169,
+        f"{'no':<5} | {'projects':<42} | {'last_scanned':<24} | {'license_risk_high':<20} | {'license_risk_low':<20} | {'misc':<10}",
         "-" * 169,
     ]
 
@@ -889,6 +899,7 @@ def render_summary_table(project_summaries, title="OVERALL SUMMARY"):
         group_label = get_summary_group_label(no)
         if group_label is not None and group_label != current_group:
             lines.append(f"--- {group_label} ---")
+            license_lines.append(f"--- {group_label} ---")
             link_lines.append(f"--- {group_label} ---")
             current_group = group_label
 
@@ -906,7 +917,9 @@ def render_summary_table(project_summaries, title="OVERALL SUMMARY"):
         if len(projects) > 42:
             projects = projects[:39] + "..."
         
-        lines.append(f"{no:<5} | {projects:<42} | {last_scanned:<22} | {unreview_components_count:<23} | {security_cvss_gt_7:<23} | {security_cvss_lt_7:<23} | {license_risk_high:<20} | {license_risk_low:<20} | {misc:<10}")
+        lines.append(f"{no:<5} | {projects:<42} | {last_scanned:<22} | {unreview_components_count:<23} | {security_cvss_gt_7:<23} | {security_cvss_lt_7:<23} | {misc:<10}")
+
+        license_lines.append(f"{no:<5} | {projects:<42} | {last_scanned:<22} | {license_risk_high:<20} | {license_risk_low:<20} | {misc:<10}")
 
         # Append the plain link at the end of the line (not padded) so Jenkins'
         # console log auto-linkifies it. OSC-8 escape codes are avoided here
@@ -914,8 +927,9 @@ def render_summary_table(project_summaries, title="OVERALL SUMMARY"):
         link_lines.append(f"{no:<5} | {projects:<42} | {blackduck_link}")
 
     lines.append("=" * 169)
+    license_lines.append("=" * 169)
     link_lines.append("=" * 169)
-    return "\n".join(lines + link_lines)
+    return "\n".join(lines + license_lines + link_lines)
 
 
 def format_risk_details(risk):
