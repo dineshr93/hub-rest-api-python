@@ -859,6 +859,16 @@ def get_summary_group_label(no):
     return None
 
 
+def truncate_projects(projects, max_len=42):
+    if len(projects) <= max_len:
+        return projects
+    return projects[: max_len - 3] + "..."
+
+
+def format_projects_cell(projects):
+    return truncate_projects(projects)
+
+
 def render_summary_table(project_summaries, title="OVERALL SUMMARY"):
     """Render a summary table for the given project summaries."""
     now = datetime.now(DISPLAY_TIMEZONE) if DISPLAY_TIMEZONE else datetime.now()
@@ -867,7 +877,7 @@ def render_summary_table(project_summaries, title="OVERALL SUMMARY"):
     lines = [
         "",
         "=" * 169,
-        f"{title} [state as of: {state_as_of}]",
+        f"{title} SECURITY RISKS [state as of: {state_as_of}]",
         "=" * 169,
         f"{'no':<5} | {'projects':<42} | {'last_scanned':<24} | {'unreview_components_count':<23} | {'security_cvss>7':<23} | {'security_cvss<7':<23} | {'misc':<10}",
         "-" * 169,
@@ -877,9 +887,9 @@ def render_summary_table(project_summaries, title="OVERALL SUMMARY"):
     # crowding out the "misc" column in narrow terminals/console logs.
     license_lines = [
         "",
-        f"{title} LICENSE RISKS",
+        f"{title} LICENSE RISKS [state as of: {state_as_of}]",
         "-" * 169,
-        f"{'no':<5} | {'projects':<42} | {'last_scanned':<24} | {'license_risk_high':<20} | {'license_risk_low':<20} | {'misc':<10}",
+        f"{'no':<5} | {'projects':<42} | {'last_scanned':<24} | {'unreview_components_count':<23} | {'license_risk_high':<20} | {'license_risk_low':<20} | {'misc':<10}",
         "-" * 169,
     ]
 
@@ -912,19 +922,17 @@ def render_summary_table(project_summaries, title="OVERALL SUMMARY"):
         license_risk_low = summary['license_risk_low']
         last_scanned = summary['last_scanned']
         misc = summary['misc']
-        
-        # Truncate projects if too long
-        if len(projects) > 42:
-            projects = projects[:39] + "..."
-        
-        lines.append(f"{no:<5} | {projects:<42} | {last_scanned:<22} | {unreview_components_count:<23} | {security_cvss_gt_7:<23} | {security_cvss_lt_7:<23} | {misc:<10}")
 
-        license_lines.append(f"{no:<5} | {projects:<42} | {last_scanned:<22} | {license_risk_high:<20} | {license_risk_low:<20} | {misc:<10}")
+        projects_cell = format_projects_cell(projects)
+
+        lines.append(f"{no:<5} | {projects_cell:<42} | {last_scanned:<22} | {unreview_components_count:<23} | {security_cvss_gt_7:<23} | {security_cvss_lt_7:<23} | {misc:<10}")
+
+        license_lines.append(f"{no:<5} | {projects_cell:<42} | {last_scanned:<22} | {unreview_components_count:<23} | {license_risk_high:<20} | {license_risk_low:<20} | {misc:<10}")
 
         # Append the plain link at the end of the line (not padded) so Jenkins'
         # console log auto-linkifies it. OSC-8 escape codes are avoided here
         # because Jenkins does not interpret them and shows them as garbage.
-        link_lines.append(f"{no:<5} | {projects:<42} | {blackduck_link}")
+        link_lines.append(f"{no:<5} | {projects_cell:<42} | {blackduck_link}")
 
     lines.append("=" * 169)
     license_lines.append("=" * 169)
@@ -1061,15 +1069,10 @@ def render_project_report(
         license_risk_low = summary_data['license_risk_low']
         last_scanned = summary_data['last_scanned']
         misc = summary_data['misc']
-        
-        # Truncate projects if too long
-        if len(projects) > 42:
-            projects = projects[:39] + "..."
-        
-        # Plain link at end of line (not padded) so Jenkins' console log
-        # auto-linkifies it; OSC-8 escapes are not used since Jenkins doesn't
-        # interpret them.
-        lines.append(f"{no:<5} | {projects:<42} | {last_scanned:<22} | {unreview_components_count:<23} | {security_cvss_gt_7:<23} | {security_cvss_lt_7:<23} | {license_risk_high:<20} | {license_risk_low:<20} | {misc:<10} |")
+
+        projects_cell = format_projects_cell(projects)
+
+        lines.append(f"{no:<5} | {projects_cell:<42} | {last_scanned:<22} | {unreview_components_count:<23} | {security_cvss_gt_7:<23} | {security_cvss_lt_7:<23} | {license_risk_high:<20} | {license_risk_low:<20} | {misc:<10} |")
         lines.append("-" * 169)
     
     lines.extend([
