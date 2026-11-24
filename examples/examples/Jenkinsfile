@@ -1,0 +1,48 @@
+#!/bin/bash
+python3 -m venv venv_crates
+source venv_crates/bin/activate
+python3 -m pip install -q easy-fossy==2.4.13
+python3 -m pip install -q blackduck
+python3 -m pip install -q id2url
+cd examples
+config_file="config.ini"
+#for blackduck client
+export BLACKDUCK_API_TOKEN=$BLACKDUCK_TOKEN
+export BLACKDUCK_URL=$BLACKDUCK_URL
+
+#file_name group_name server token token_expire token_valdity_days
+python3 prepareconfigfile.py $config_file $group_name $fossy_server $token $token_expiry $token_valdity_days
+echo {\"baseurl\": \"$BLACKDUCK_URL\",\"api_token\": \"$BLACKDUCK_TOKEN\",\"insecure\": true,\"debug\": false} > .restconfig.json
+
+echo "====================="
+echo "project name: $PROJECT_NAME"
+echo "project version: $PROJECT_VERSION"
+echo "====================="
+
+if $upload_to_fossy ;
+then
+	#create a folder under project name folder with date appended 
+	folder_id=$(python3 create_fossy_folder.py "$config_file" "$fossy_server" "$PROJECT_NAME" | tail -1)
+	if ! [[ "$folder_id" =~ ^[0-9]+$ ]]; then
+    	echo "Failed to create/find fossy folder: '$folder_id'"
+    	exit 1
+	fi
+    python3 bd_to_fossy_upload_maven_unreviewed.py $PROJECT_NAME $PROJECT_VERSION $folder_id $assignee --upload_to_fossy
+    echo "https://fossology.ebgroup.elektrobit.com/repo/?mod=browse&show=quick&folder=$folder_id"
+    echo "https://osrb-tools.ebgroup.elektrobit.com/view/list/job/fossy_folder_list/build?delay=0sec"
+    exit 0
+fi
+
+if $upload_copyright_bd ;
+then
+    python3 bd_to_fossy_upload_maven_unreviewed.py $PROJECT_NAME $PROJECT_VERSION $folder_id $assignee --upload_copyright_bd
+    exit 0
+fi
+
+python3 bd_to_fossy_upload_maven_unreviewed.py $PROJECT_NAME $PROJECT_VERSION $folder_id $assignee
+
+if $upload_to_fossy == true && $upload_copyright_bd == true ;
+then
+    echo "dont select both upload_to_fossy && upload_copyright_bd. Choose one and try again"
+fi
+
